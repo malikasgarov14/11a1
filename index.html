@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Class Photo Dump</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { background: #0f172a; color: white; max-width: 800px; margin: 0 auto; padding: 20px; }
+    h1 { text-align: center; color: #38bdf8; }
+    .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 30px; }
+    input[type="text"], input[type="file"] { width: 100%; padding: 10px; margin: 8px 0; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; }
+    button { width: 100%; background: #0284c7; color: white; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+    button:hover { background: #0369a1; }
+    
+    /* Photo Gallery Grid */
+    .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+    .photo-card { background: #1e293b; border-radius: 8px; overflow: hidden; border: 1px solid #334155; }
+    .photo-card img { width: 100%; height: 200px; object-fit: cover; display: block; }
+    .photo-info { padding: 12px; }
+    .photo-info p { margin: 0 0 6px 0; font-size: 1rem; word-break: break-word; }
+    .photo-info small { color: #94a3b8; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+
+  <h1>Class Photo Dump 📸</h1>
+
+  <div class="card">
+    <input type="text" id="sender-name" placeholder="Your Name (Optional)">
+    <input type="text" id="caption-text" placeholder="Write a funny caption...">
+    <input type="file" id="photo-input" accept="image/*">
+    <button onclick="uploadPhoto()" id="upload-btn">Upload Photo</button>
+  </div>
+
+  <h2>Gallery</h2>
+  <div id="gallery" class="gallery">Loading photos...</div>
+
+  <script>
+    const SUPABASE_URL = 'https://epwpfozfgpbwhqslhozf.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_-c_E5jriVwbfonp9xKIHmA_rhuGiuM1';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    async function loadPhotos() {
+      const { data, error } = await supabaseClient
+        .from('photos')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) return console.error(error);
+
+      const gallery = document.getElementById('gallery');
+      if (data.length === 0) {
+        gallery.innerHTML = '<p style="color: #94a3b8;">No photos yet! Drop something funny above.</p>';
+        return;
+      }
+
+      gallery.innerHTML = data.map(item => `
+        <div class="photo-card">
+          <img src="${item.image_url}" alt="Funny Photo">
+          <div class="photo-info">
+            <p>${escapeHtml(item.caption || 'No caption')}</p>
+            <small>Posted by <strong>${escapeHtml(item.sender || 'Anonymous')}</strong></small>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function uploadPhoto() {
+      const fileInput = document.getElementById('photo-input');
+      const caption = document.getElementById('caption-text').value.trim();
+      const sender = document.getElementById('sender-name').value.trim() || 'Anonymous';
+      const btn = document.getElementById('upload-btn');
+
+      if (!fileInput.files.length) return alert('Please select a photo first!');
+
+      const file = fileInput.files[0];
+      const fileName = `${Date.now()}_${file.name}`; // Unique file name
+
+      btn.innerText = 'Uploading...';
+      btn.disabled = true;
+
+      // 1. Upload image file to Supabase Storage
+      const { data: storageData, error: storageError } = await supabaseClient
+        .storage
+        .from('funny-photos')
+        .upload(fileName, file);
+
+      if (storageError) {
+        alert('Upload failed: ' + storageError.message);
+        btn.innerText = 'Upload Photo';
+        btn.disabled = false;
+        return;
+      }
+
+      // 2. Get the public image URL
+      const { data: urlData } = supabaseClient
+        .storage
+        .from('funny-photos')
+        .getPublicUrl(fileName);
+
+      const imageUrl = urlData.publicUrl;
+
+      // 3. Save entry in database table
+      const { error: dbError } = await supabaseClient
+        .from('photos')
+        .insert([{ image_url: imageUrl, caption: caption, sender: sender }]);
+
+      btn.innerText = 'Upload Photo';
+      btn.disabled = false;
+
+      if (dbError) {
+        alert('Database save failed: ' + dbError.message);
+      } else {
+        document.getElementById('caption-text').value = '';
+        fileInput.value = '';
+        loadPhotos();
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.innerText = text;
+      return div.innerHTML;
+    }
+
+    loadPhotos();
+  </script>
+</body>
+</html>
