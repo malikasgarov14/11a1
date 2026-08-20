@@ -22,7 +22,13 @@
     
     #protected-content { display: none; }
 
-    /* Enlarged Photo Gallery Grid */
+    /* Search Bar Styling */
+    .gallery-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+    .gallery-header h2 { margin: 0; }
+    .search-input { width: 100%; max-width: 320px; padding: 10px 14px; background: #1e293b; border: 1px solid #38bdf8; color: white; border-radius: 20px; outline: none; margin: 0; }
+    .search-input::placeholder { color: #94a3b8; }
+
+    /* Photo Gallery Grid */
     .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 24px; }
     .photo-card { background: #1e293b; border-radius: 10px; overflow: hidden; border: 1px solid #334155; display: flex; flex-direction: column; }
     .photo-card img { width: 100%; height: 320px; object-fit: cover; display: block; }
@@ -63,7 +69,11 @@
       <button onclick="uploadPhoto()" id="upload-btn">Upload Photo</button>
     </div>
 
-    <h2>Gallery</h2>
+    <div class="gallery-header">
+      <h2>Gallery</h2>
+      <input type="text" id="search-bar" class="search-input" placeholder="🔍 Search captions or names..." oninput="filterPhotos()">
+    </div>
+
     <div id="gallery" class="gallery">Loading photos...</div>
   </div>
 
@@ -72,6 +82,9 @@
     const SUPABASE_URL = 'https://epwpfozfgpbwhqslhozf.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_-c_E5jriVwbfonp9xKIHmA_rhuGiuM1';
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let allPhotos = [];
+    let allComments = [];
 
     function checkPassword() {
       const input = document.getElementById('passcode-input').value;
@@ -96,7 +109,6 @@
     });
 
     async function loadPhotos() {
-      // Fetch photos alongside all comments
       const { data: photos, error: photoErr } = await supabaseClient
         .from('photos')
         .select('*')
@@ -109,14 +121,22 @@
 
       if (photoErr) return console.error(photoErr);
 
+      allPhotos = photos || [];
+      allComments = comments || [];
+
+      renderGallery(allPhotos);
+    }
+
+    function renderGallery(photosToDisplay) {
       const gallery = document.getElementById('gallery');
-      if (!photos || photos.length === 0) {
-        gallery.innerHTML = '<p style="color: #94a3b8;">No photos yet! Drop something funny above.</p>';
+      
+      if (!photosToDisplay || photosToDisplay.length === 0) {
+        gallery.innerHTML = '<p style="color: #94a3b8; grid-column: 1/-1;">No photos found matching your search.</p>';
         return;
       }
 
-      gallery.innerHTML = photos.map(photo => {
-        const photoComments = (comments || []).filter(c => c.photo_id == photo.id);
+      gallery.innerHTML = photosToDisplay.map(photo => {
+        const photoComments = allComments.filter(c => c.photo_id == photo.id);
         
         return `
           <div class="photo-card">
@@ -146,6 +166,24 @@
           </div>
         `;
       }).join('');
+    }
+
+    // Real-time Case-Insensitive Search
+    function filterPhotos() {
+      const query = document.getElementById('search-bar').value.toLowerCase().trim();
+
+      if (!query) {
+        renderGallery(allPhotos);
+        return;
+      }
+
+      const filtered = allPhotos.filter(photo => {
+        const captionMatch = (photo.caption || '').toLowerCase().includes(query);
+        const senderMatch = (photo.sender || '').toLowerCase().includes(query);
+        return captionMatch || senderMatch;
+      });
+
+      renderGallery(filtered);
     }
 
     async function addComment(photoId) {
@@ -212,6 +250,7 @@
       } else {
         document.getElementById('caption-text').value = '';
         fileInput.value = '';
+        document.getElementById('search-bar').value = '';
         loadPhotos();
       }
     }
