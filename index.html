@@ -8,8 +8,8 @@
   <style>
     * { box-sizing: border-box; font-family: system-ui, sans-serif; }
     body { background: #0f172a; color: white; max-width: 900px; margin: 0 auto; padding: 20px; }
-    h1 { text-align: center; color: #38bdf8; }
-    .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 30px; }
+    h1 { text-align: center; color: #38bdf8; margin-top: 0; }
+    .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
     input[type="text"], input[type="password"], input[type="file"] { 
       width: 100%; padding: 10px; margin: 8px 0; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; 
     }
@@ -22,9 +22,22 @@
     
     #protected-content { display: none; }
 
-    /* Search Bar Styling */
-    .gallery-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
-    .gallery-header h2 { margin: 0; }
+    /* ONLY SEARCH BAR STAYS STICKY */
+    .sticky-search-bar {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: #0f172a;
+      padding: 12px 0;
+      border-bottom: 2px solid #1e293b;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .sticky-search-bar h2 { margin: 0; }
     .search-input { width: 100%; max-width: 320px; padding: 10px 14px; background: #1e293b; border: 1px solid #38bdf8; color: white; border-radius: 20px; outline: none; margin: 0; }
     .search-input::placeholder { color: #94a3b8; }
 
@@ -60,6 +73,8 @@
 
   <!-- GALLERY -->
   <div id="protected-content">
+    
+    <!-- NORMAL SCROLLABLE HEADER -->
     <h1>Class Photo Dump 📸</h1>
 
     <div class="card">
@@ -69,7 +84,8 @@
       <button onclick="uploadPhoto()" id="upload-btn">Upload Photo</button>
     </div>
 
-    <div class="gallery-header">
+    <!-- STICKY SEARCH BAR CONTAINER -->
+    <div class="sticky-search-bar">
       <h2>Gallery</h2>
       <input type="text" id="search-bar" class="search-input" placeholder="🔍 Search captions or names..." oninput="filterPhotos()">
     </div>
@@ -168,7 +184,6 @@
       }).join('');
     }
 
-    // Real-time Case-Insensitive Search
     function filterPhotos() {
       const query = document.getElementById('search-bar').value.toLowerCase().trim();
 
