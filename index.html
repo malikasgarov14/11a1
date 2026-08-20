@@ -7,34 +7,43 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { box-sizing: border-box; font-family: system-ui, sans-serif; }
-    body { background: #0f172a; color: white; max-width: 800px; margin: 0 auto; padding: 20px; }
+    body { background: #0f172a; color: white; max-width: 900px; margin: 0 auto; padding: 20px; }
     h1 { text-align: center; color: #38bdf8; }
     .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 30px; }
     input[type="text"], input[type="password"], input[type="file"] { 
       width: 100%; padding: 10px; margin: 8px 0; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; 
     }
-    button { width: 100%; background: #0284c7; color: white; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+    button { width: 100%; background: #0284c7; color: white; padding: 10px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 6px; }
     button:hover { background: #0369a1; }
     
-    /* Password Screen Specifics */
+    /* Password Screen */
     #lock-screen { max-width: 400px; margin: 80px auto; text-align: center; }
     .error-msg { color: #f87171; font-size: 0.9rem; margin-top: 8px; display: none; }
     
-    /* Main Content Wrapper */
     #protected-content { display: none; }
 
-    /* Photo Gallery Grid */
-    .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
-    .photo-card { background: #1e293b; border-radius: 8px; overflow: hidden; border: 1px solid #334155; }
-    .photo-card img { width: 100%; height: 200px; object-fit: cover; display: block; }
-    .photo-info { padding: 12px; }
-    .photo-info p { margin: 0 0 6px 0; font-size: 1rem; word-break: break-word; }
-    .photo-info small { color: #94a3b8; font-size: 0.8rem; }
+    /* Enlarged Photo Gallery Grid */
+    .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 24px; }
+    .photo-card { background: #1e293b; border-radius: 10px; overflow: hidden; border: 1px solid #334155; display: flex; flex-direction: column; }
+    .photo-card img { width: 100%; height: 320px; object-fit: cover; display: block; }
+    .photo-info { padding: 16px; border-bottom: 1px solid #334155; }
+    .photo-info p { margin: 0 0 6px 0; font-size: 1.1rem; word-break: break-word; }
+    .photo-info small { color: #94a3b8; font-size: 0.85rem; }
+
+    /* Comments Section */
+    .comments-section { padding: 16px; background: #162032; flex-grow: 1; display: flex; flex-direction: column; }
+    .comments-section h4 { margin: 0 0 10px 0; font-size: 0.95rem; color: #38bdf8; }
+    .comments-list { max-height: 150px; overflow-y: auto; margin-bottom: 10px; font-size: 0.85rem; display: flex; flex-direction: column; gap: 6px; }
+    .comment-item { background: #0f172a; padding: 6px 10px; border-radius: 6px; word-break: break-word; }
+    .comment-item strong { color: #f8fafc; }
+    .comment-input-group { display: flex; gap: 6px; margin-top: auto; }
+    .comment-input-group input { margin: 0; padding: 6px 10px; font-size: 0.85rem; }
+    .comment-input-group button { width: auto; padding: 6px 14px; margin: 0; font-size: 0.85rem; }
   </style>
 </head>
 <body>
 
-  <!-- PASSWORD GATE SCREEN -->
+  <!-- LOCK SCREEN -->
   <div id="lock-screen" class="card">
     <h2>🔒 Restricted Access</h2>
     <p style="color: #94a3b8; font-size: 0.9rem;">Enter the passcode to view and upload photos.</p>
@@ -43,7 +52,7 @@
     <p id="error-msg" class="error-msg">Incorrect password. Try again!</p>
   </div>
 
-  <!-- MAIN GALLERY CONTENT (Hidden until password verified) -->
+  <!-- GALLERY -->
   <div id="protected-content">
     <h1>Class Photo Dump 📸</h1>
 
@@ -64,61 +73,100 @@
     const SUPABASE_KEY = 'sb_publishable_-c_E5jriVwbfonp9xKIHmA_rhuGiuM1';
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Verify Password Input
     function checkPassword() {
       const input = document.getElementById('passcode-input').value;
-      const errorMsg = document.getElementById('error-msg');
-
       if (input === SECRET_PASS) {
         sessionStorage.setItem('unlocked', 'true');
         showGallery();
       } else {
-        errorMsg.style.display = 'block';
+        document.getElementById('error-msg').style.display = 'block';
       }
     }
 
-    // Display Content View
     function showGallery() {
       document.getElementById('lock-screen').style.display = 'none';
       document.getElementById('protected-content').style.display = 'block';
       loadPhotos();
     }
 
-    // Check existing session status on page load
-    if (sessionStorage.getItem('unlocked') === 'true') {
-      showGallery();
-    }
+    if (sessionStorage.getItem('unlocked') === 'true') showGallery();
 
-    // Allow pressing "Enter" key on password field
-    document.getElementById('passcode-input').addEventListener('keypress', function (e) {
-      if (e.key === 'Enter') {
-        checkPassword();
-      }
+    document.getElementById('passcode-input').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') checkPassword();
     });
 
     async function loadPhotos() {
-      const { data, error } = await supabaseClient
+      // Fetch photos alongside all comments
+      const { data: photos, error: photoErr } = await supabaseClient
         .from('photos')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) return console.error(error);
+      const { data: comments, error: commErr } = await supabaseClient
+        .from('photo_comments')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (photoErr) return console.error(photoErr);
 
       const gallery = document.getElementById('gallery');
-      if (data.length === 0) {
+      if (!photos || photos.length === 0) {
         gallery.innerHTML = '<p style="color: #94a3b8;">No photos yet! Drop something funny above.</p>';
         return;
       }
 
-      gallery.innerHTML = data.map(item => `
-        <div class="photo-card">
-          <img src="${escapeHtml(item.image_url)}" alt="Funny Photo">
-          <div class="photo-info">
-            <p>${escapeHtml(item.caption || 'No caption')}</p>
-            <small>Posted by <strong>${escapeHtml(item.sender || 'Anonymous')}</strong></small>
+      gallery.innerHTML = photos.map(photo => {
+        const photoComments = (comments || []).filter(c => c.photo_id == photo.id);
+        
+        return `
+          <div class="photo-card">
+            <img src="${escapeHtml(photo.image_url)}" alt="Funny Photo">
+            <div class="photo-info">
+              <p>${escapeHtml(photo.caption || 'No caption')}</p>
+              <small>Posted by <strong>${escapeHtml(photo.sender || 'Anonymous')}</strong></small>
+            </div>
+            
+            <div class="comments-section">
+              <h4>💬 Comments (${photoComments.length})</h4>
+              <div class="comments-list" id="comments-${photo.id}">
+                ${photoComments.length === 0 ? '<small style="color:#64748b;">No comments yet...</small>' : ''}
+                ${photoComments.map(c => `
+                  <div class="comment-item">
+                    <strong>${escapeHtml(c.author)}:</strong> ${escapeHtml(c.comment)}
+                  </div>
+                `).join('')}
+              </div>
+              
+              <div class="comment-input-group">
+                <input type="text" id="name-in-${photo.id}" placeholder="Name" style="width: 30%;">
+                <input type="text" id="text-in-${photo.id}" placeholder="Write a comment..." style="width: 70%;">
+                <button onclick="addComment(${photo.id})">Post</button>
+              </div>
+            </div>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
+    }
+
+    async function addComment(photoId) {
+      const authorInput = document.getElementById(`name-in-${photoId}`);
+      const textInput = document.getElementById(`text-in-${photoId}`);
+      
+      const author = authorInput.value.trim() || 'Anonymous';
+      const text = textInput.value.trim();
+
+      if (!text) return alert('Please enter a comment.');
+
+      const { error } = await supabaseClient
+        .from('photo_comments')
+        .insert([{ photo_id: photoId, author: author, comment: text }]);
+
+      if (error) {
+        alert('Could not post comment: ' + error.message);
+      } else {
+        textInput.value = '';
+        loadPhotos();
+      }
     }
 
     async function uploadPhoto() {
@@ -135,7 +183,7 @@
       btn.innerText = 'Uploading...';
       btn.disabled = true;
 
-      const { data: storageData, error: storageError } = await supabaseClient
+      const { error: storageError } = await supabaseClient
         .storage
         .from('funny-photos')
         .upload(fileName, file);
@@ -152,11 +200,9 @@
         .from('funny-photos')
         .getPublicUrl(fileName);
 
-      const imageUrl = urlData.publicUrl;
-
       const { error: dbError } = await supabaseClient
         .from('photos')
-        .insert([{ image_url: imageUrl, caption: caption, sender: sender }]);
+        .insert([{ image_url: urlData.publicUrl, caption: caption, sender: sender }]);
 
       btn.innerText = 'Upload Photo';
       btn.disabled = false;
