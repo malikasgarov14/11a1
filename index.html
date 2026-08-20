@@ -10,10 +10,19 @@
     body { background: #0f172a; color: white; max-width: 800px; margin: 0 auto; padding: 20px; }
     h1 { text-align: center; color: #38bdf8; }
     .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 30px; }
-    input[type="text"], input[type="file"] { width: 100%; padding: 10px; margin: 8px 0; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; }
+    input[type="text"], input[type="password"], input[type="file"] { 
+      width: 100%; padding: 10px; margin: 8px 0; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 6px; 
+    }
     button { width: 100%; background: #0284c7; color: white; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
     button:hover { background: #0369a1; }
     
+    /* Password Screen Specifics */
+    #lock-screen { max-width: 400px; margin: 80px auto; text-align: center; }
+    .error-msg { color: #f87171; font-size: 0.9rem; margin-top: 8px; display: none; }
+    
+    /* Main Content Wrapper */
+    #protected-content { display: none; }
+
     /* Photo Gallery Grid */
     .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
     .photo-card { background: #1e293b; border-radius: 8px; overflow: hidden; border: 1px solid #334155; }
@@ -25,22 +34,67 @@
 </head>
 <body>
 
-  <h1>Class Photo Dump 📸</h1>
-
-  <div class="card">
-    <input type="text" id="sender-name" placeholder="Your Name (Optional)">
-    <input type="text" id="caption-text" placeholder="Write a funny caption...">
-    <input type="file" id="photo-input" accept="image/*">
-    <button onclick="uploadPhoto()" id="upload-btn">Upload Photo</button>
+  <!-- PASSWORD GATE SCREEN -->
+  <div id="lock-screen" class="card">
+    <h2>🔒 Restricted Access</h2>
+    <p style="color: #94a3b8; font-size: 0.9rem;">Enter the passcode to view and upload photos.</p>
+    <input type="password" id="passcode-input" placeholder="Enter password...">
+    <button onclick="checkPassword()">Unlock Gallery</button>
+    <p id="error-msg" class="error-msg">Incorrect password. Try again!</p>
   </div>
 
-  <h2>Gallery</h2>
-  <div id="gallery" class="gallery">Loading photos...</div>
+  <!-- MAIN GALLERY CONTENT (Hidden until password verified) -->
+  <div id="protected-content">
+    <h1>Class Photo Dump 📸</h1>
+
+    <div class="card">
+      <input type="text" id="sender-name" placeholder="Your Name (Optional)">
+      <input type="text" id="caption-text" placeholder="Write a funny caption...">
+      <input type="file" id="photo-input" accept="image/*">
+      <button onclick="uploadPhoto()" id="upload-btn">Upload Photo</button>
+    </div>
+
+    <h2>Gallery</h2>
+    <div id="gallery" class="gallery">Loading photos...</div>
+  </div>
 
   <script>
+    const SECRET_PASS = 'malik312';
     const SUPABASE_URL = 'https://epwpfozfgpbwhqslhozf.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_-c_E5jriVwbfonp9xKIHmA_rhuGiuM1';
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Verify Password Input
+    function checkPassword() {
+      const input = document.getElementById('passcode-input').value;
+      const errorMsg = document.getElementById('error-msg');
+
+      if (input === SECRET_PASS) {
+        sessionStorage.setItem('unlocked', 'true');
+        showGallery();
+      } else {
+        errorMsg.style.display = 'block';
+      }
+    }
+
+    // Display Content View
+    function showGallery() {
+      document.getElementById('lock-screen').style.display = 'none';
+      document.getElementById('protected-content').style.display = 'block';
+      loadPhotos();
+    }
+
+    // Check existing session status on page load
+    if (sessionStorage.getItem('unlocked') === 'true') {
+      showGallery();
+    }
+
+    // Allow pressing "Enter" key on password field
+    document.getElementById('passcode-input').addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') {
+        checkPassword();
+      }
+    });
 
     async function loadPhotos() {
       const { data, error } = await supabaseClient
@@ -58,7 +112,7 @@
 
       gallery.innerHTML = data.map(item => `
         <div class="photo-card">
-          <img src="${item.image_url}" alt="Funny Photo">
+          <img src="${escapeHtml(item.image_url)}" alt="Funny Photo">
           <div class="photo-info">
             <p>${escapeHtml(item.caption || 'No caption')}</p>
             <small>Posted by <strong>${escapeHtml(item.sender || 'Anonymous')}</strong></small>
@@ -76,12 +130,11 @@
       if (!fileInput.files.length) return alert('Please select a photo first!');
 
       const file = fileInput.files[0];
-      const fileName = `${Date.now()}_${file.name}`; // Unique file name
+      const fileName = `${Date.now()}_${file.name}`;
 
       btn.innerText = 'Uploading...';
       btn.disabled = true;
 
-      // 1. Upload image file to Supabase Storage
       const { data: storageData, error: storageError } = await supabaseClient
         .storage
         .from('funny-photos')
@@ -94,7 +147,6 @@
         return;
       }
 
-      // 2. Get the public image URL
       const { data: urlData } = supabaseClient
         .storage
         .from('funny-photos')
@@ -102,7 +154,6 @@
 
       const imageUrl = urlData.publicUrl;
 
-      // 3. Save entry in database table
       const { error: dbError } = await supabaseClient
         .from('photos')
         .insert([{ image_url: imageUrl, caption: caption, sender: sender }]);
@@ -124,8 +175,6 @@
       div.innerText = text;
       return div.innerHTML;
     }
-
-    loadPhotos();
   </script>
 </body>
 </html>
