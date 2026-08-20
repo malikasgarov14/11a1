@@ -22,7 +22,7 @@
     
     #protected-content { display: none; }
 
-    /* ONLY SEARCH BAR STAYS STICKY */
+    /* STICKY SEARCH BAR */
     .sticky-search-bar {
       position: sticky;
       top: 0;
@@ -44,7 +44,7 @@
     /* Photo Gallery Grid */
     .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 24px; }
     .photo-card { background: #1e293b; border-radius: 10px; overflow: hidden; border: 1px solid #334155; display: flex; flex-direction: column; }
-    .photo-card img { width: 100%; height: 350px; object-fit: cover; display: block; }
+    .photo-card img, .photo-card video { width: 100%; height: 320px; object-fit: cover; display: block; }
     .photo-info { padding: 16px; border-bottom: 1px solid #334155; }
     .photo-info p { margin: 0 0 6px 0; font-size: 1.1rem; word-break: break-word; }
     .photo-info small { color: #94a3b8; font-size: 0.85rem; }
@@ -74,13 +74,12 @@
   <!-- GALLERY -->
   <div id="protected-content">
     
-    <!-- NORMAL SCROLLABLE HEADER -->
     <h1>Class Photo Dump 📸</h1>
 
     <div class="card">
       <input type="text" id="sender-name" placeholder="Your Name (Optional)">
       <input type="text" id="caption-text" placeholder="Write a funny caption...">
-      <input type="file" id="photo-input" accept="image/*">
+      <input type="file" id="photo-input" accept="image/*,video/*">
       <button onclick="uploadPhoto()" id="upload-btn">Upload Photo</button>
     </div>
 
@@ -116,6 +115,7 @@
       document.getElementById('lock-screen').style.display = 'none';
       document.getElementById('protected-content').style.display = 'block';
       loadPhotos();
+      setupRealtimeComments();
     }
 
     if (sessionStorage.getItem('unlocked') === 'true') showGallery();
@@ -153,19 +153,24 @@
 
       gallery.innerHTML = photosToDisplay.map(photo => {
         const photoComments = allComments.filter(c => c.photo_id == photo.id);
+        const isVideo = photo.image_url.match(/\.(mp4|webm|ogg|mov)$/i);
+
+        const mediaElement = isVideo 
+          ? `<video src="${escapeHtml(photo.image_url)}" controls></video>`
+          : `<img src="${escapeHtml(photo.image_url)}" alt="Funny Photo">`;
         
         return `
-          <div class="photo-card">
-            <img src="${escapeHtml(photo.image_url)}" alt="Funny Photo">
+          <div class="photo-card" id="card-${photo.id}">
+            ${mediaElement}
             <div class="photo-info">
               <p>${escapeHtml(photo.caption || 'No caption')}</p>
               <small>Posted by <strong>${escapeHtml(photo.sender || 'Anonymous')}</strong></small>
             </div>
             
             <div class="comments-section">
-              <h4>💬 Comments (${photoComments.length})</h4>
+              <h4 id="count-${photo.id}">💬 Comments (${photoComments.length})</h4>
               <div class="comments-list" id="comments-${photo.id}">
-                ${photoComments.length === 0 ? '<small style="color:#64748b;">No comments yet...</small>' : ''}
+                ${photoComments.length === 0 ? '<small style="color:#64748b;" class="no-comments">No comments yet...</small>' : ''}
                 ${photoComments.map(c => `
                   <div class="comment-item">
                     <strong>${escapeHtml(c.author)}:</strong> ${escapeHtml(c.comment)}
@@ -175,7 +180,7 @@
               
               <div class="comment-input-group">
                 <input type="text" id="name-in-${photo.id}" placeholder="Name" style="width: 30%;">
-                <input type="text" id="text-in-${photo.id}" placeholder="Write a comment..." style="width: 70%;">
+                <input type="text" id="text-in-${photo.id}" placeholder="Write a comment..." style="width: 70%;" onkeypress="handleCommentEnter(event, ${photo.id})">
                 <button onclick="addComment(${photo.id})">Post</button>
               </div>
             </div>
@@ -201,6 +206,12 @@
       renderGallery(filtered);
     }
 
+    function handleCommentEnter(e, photoId) {
+      if (e.key === 'Enter') {
+        addComment(photoId);
+      }
+    }
+
     async function addComment(photoId) {
       const authorInput = document.getElementById(`name-in-${photoId}`);
       const textInput = document.getElementById(`text-in-${photoId}`);
@@ -218,8 +229,48 @@
         alert('Could not post comment: ' + error.message);
       } else {
         textInput.value = '';
-        loadPhotos();
       }
+    }
+
+    // Append comment directly to DOM without reloading photos
+    function appendCommentToDOM(newComment) {
+      allComments.push(newComment);
+
+      const listDiv = document.getElementById(`comments-${newComment.photo_id}`);
+      const countHeader = document.getElementById(`count-${newComment.photo_id}`);
+
+      if (!listDiv) return; // Photo might be hidden by search filter
+
+      // Remove "No comments yet..." placeholder if present
+      const emptyMsg = listDiv.querySelector('.no-comments');
+      if (emptyMsg) emptyMsg.remove();
+
+      // Create and append the comment element
+      const commentEl = document.createElement('div');
+      commentEl.className = 'comment-item';
+      commentEl.innerHTML = `<strong>${escapeHtml(newComment.author)}:</strong> ${escapeHtml(newComment.comment)}`;
+      listDiv.appendChild(commentEl);
+
+      // Auto-scroll comment box to bottom
+      listDiv.scrollTop = listDiv.scrollHeight;
+
+      // Update total count
+      const totalForPhoto = allComments.filter(c => c.photo_id == newComment.photo_id).length;
+      if (countHeader) countHeader.innerText = `💬 Comments (${totalForPhoto})`;
+    }
+
+    // Listen for live database insertions
+    function setupRealtimeComments() {
+      supabaseClient
+        .channel('public:photo_comments')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'photo_comments' },
+          (payload) => {
+            appendCommentToDOM(payload.new);
+          }
+        )
+        .subscribe();
     }
 
     async function uploadPhoto() {
@@ -228,7 +279,7 @@
       const sender = document.getElementById('sender-name').value.trim() || 'Anonymous';
       const btn = document.getElementById('upload-btn');
 
-      if (!fileInput.files.length) return alert('Please select a photo first!');
+      if (!fileInput.files.length) return alert('Please select a photo or video first!');
 
       const file = fileInput.files[0];
       const fileName = `${Date.now()}_${file.name}`;
